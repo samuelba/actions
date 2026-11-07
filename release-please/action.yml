@@ -1,0 +1,111 @@
+name: Release Please with deduplicated notes
+description: >-
+  Run release-please, then drop merge commits and rebased copies of commits from the changelog and
+  the body of the open release pull request.
+
+inputs:
+  token:
+    description: >-
+      Token for release-please and the cleanup. A fine-grained personal access token lets CI run on
+      the release pull request.
+    default: ${{ github.token }}
+  config-file:
+    description: Path to the release-please config.
+    default: release-please-config.json
+  manifest-file:
+    description: Path to the release-please manifest.
+    default: .release-please-manifest.json
+  target-branch:
+    description: Branch the release pull request targets.
+    default: main
+  changelog-path:
+    description: Changelog that release-please writes.
+    default: CHANGELOG.md
+  dedupe:
+    description: Set to false to skip the cleanup of the release notes.
+    default: 'true'
+  node-version:
+    description: Node.js version for the cleanup. It needs 22.18 or later to run TypeScript.
+    default: '24'
+
+outputs:
+  release_created:
+    description: true when this run created a release.
+    value: ${{ steps.release.outputs.release_created }}
+  tag_name:
+    description: Tag of the created release.
+    value: ${{ steps.release.outputs.tag_name }}
+  version:
+    description: Version of the created release.
+    value: ${{ steps.release.outputs.version }}
+  major:
+    description: Major version of the created release.
+    value: ${{ steps.release.outputs.major }}
+  sha:
+    description: Commit the created release points at.
+    value: ${{ steps.release.outputs.sha }}
+  pr:
+    description: JSON of the release pull request that this run opened or updated.
+    value: ${{ steps.release.outputs.pr }}
+
+runs:
+  using: composite
+  steps:
+    - uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4.4.1
+      id: release
+      with:
+        token: ${{ inputs.token }}
+        config-file: ${{ inputs.config-file }}
+        manifest-file: ${{ inputs.manifest-file }}
+        target-branch: ${{ inputs.target-branch }}
+
+    - if: inputs.dedupe == 'true' && steps.release.outputs.pr != '' && steps.release.outputs.release_created != 'true'
+      uses: actions/checkout@v7
+      with:
+        token: ${{ inputs.token }}
+        ref: ${{ inputs.target-branch }}
+
+    - if: inputs.dedupe == 'true' && steps.release.outputs.pr != '' && steps.release.outputs.release_created != 'true'
+      uses: actions/setup-node@v7
+      with:
+        node-version: ${{ inputs.node-version }}
+
+    - name: Drop merge commits and stale copies from the release notes
+      if: inputs.dedupe == 'true' && steps.release.outputs.pr != '' && steps.release.outputs.release_created != 'true'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        REPO: ${{ github.repository }}
+        TARGET_BRANCH: ${{ inputs.target-branch }}
+        CHANGELOG: ${{ inputs.changelog-path }}
+      run: |
+        set -euo pipefail
+        # The pr output is the pull request JSON, not the number.
+        pr=$(gh pr list --state open --base "$TARGET_BRANCH" --label 'autorelease: pending' --json number --jq '.[0].number')
+        case "$pr" in
+          '' | null | *[!0-9]*)
+            printf 'no open release pull request\n' >&2
+            exit 1
+            ;;
+        esac
+        # Copied out of the action directory, which is the workspace when a repo runs its own copy.
+        script="${RUNNER_TEMP}/dedupeChangelog.ts"
+        body="${RUNNER_TEMP}/release-pr-body.md"
+        cp "${GITHUB_ACTION_PATH}/src/dedupeChangelog.ts" "$script"
+        gh pr checkout "$pr"
+        gh pr view "$pr" --json body --jq .body > "$body"
+        cp "$body" "${body}.orig"
+        node "$script" \
+          --repo "$REPO" \
+          --changelog "$CHANGELOG" \
+          --pull-request-body "$body"
+        if ! git diff --quiet -- "$CHANGELOG"; then
+          git add "$CHANGELOG"
+          git -c user.name='github-actions[bot]' \
+            -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+            commit -m "chore: drop duplicate entries from the changelog"
+          git push
+        fi
+        if ! cmp -s "$body" "${body}.orig"; then
+          gh pr edit "$pr" --body-file "$body"
+        fi
