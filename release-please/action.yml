@@ -76,15 +76,15 @@ runs:
       env:
         GH_TOKEN: ${{ inputs.token }}
         REPO: ${{ github.repository }}
-        TARGET_BRANCH: ${{ inputs.target-branch }}
+        PR_JSON: ${{ steps.release.outputs.pr }}
         CHANGELOG: ${{ inputs.changelog-path }}
       run: |
         set -euo pipefail
-        # The pr output is the pull request JSON, not the number.
-        pr=$(gh pr list --state open --base "$TARGET_BRANCH" --label 'autorelease: pending' --json number --jq '.[0].number')
+        # Searching by label misses a pull request that release-please opened moments ago.
+        pr=$(jq -r '.number' <<< "$PR_JSON")
         case "$pr" in
           '' | null | *[!0-9]*)
-            printf 'no open release pull request\n' >&2
+            printf 'release-please returned no pull request number\n' >&2
             exit 1
             ;;
         esac
