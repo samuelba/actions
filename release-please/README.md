@@ -6,6 +6,12 @@ the open release pull request:
 - Entries for merge commits are dropped, so a pull request merged with a merge commit shows up once.
 - A later commit that repeats both the subject and the diff of an earlier one in the same section is
   dropped. Such copies come from branches built on commits that were rebased and merged elsewhere.
+- When the config sets `include-commit-authors`, each entry of the new release gets its author, as
+  in `* subject (@login) ([sha](...))`. release-please drops the author itself until
+  [googleapis/release-please#2874](https://github.com/googleapis/release-please/pull/2874) is
+  released.
+
+Set the `dedupe` input to `false` to keep merge commits and copies. Authors are still added.
 
 Both `CHANGELOG.md` on the release branch and the pull request body are updated. Sections left
 without entries are removed.
