@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import {
+  appendCommitAuthors,
+  commitAuthorsEnabled,
   omitCopiedCommitEntries,
   omitMergeCommitEntries,
   shasWithRepeatedSubjects,
@@ -162,5 +164,73 @@ ${bullet('change the keyboard shortcuts', '1')}
     ])
 
     expect(omitCopiedCommitEntries(copied, patchIds)).toBe(copied)
+  })
+})
+
+describe('appendCommitAuthors', () => {
+  const release = `## [1.0.0](https://github.com/samuelba/ukemi/compare/v0.9.0...v1.0.0) (2026-11-08)
+
+### Features
+
+${bullet('show the CI status', 'a')}
+${bullet('import a contributed change', 'b')}
+${bullet('older change', 'c')}
+
+---
+This PR was generated with Release Please.
+`
+
+  test('adds the author before the commit link and leaves other lines alone', () => {
+    const authors = new Map([
+      [sha('a'), '@samuelba'],
+      [sha('b'), 'Jane Doe'],
+    ])
+
+    expect(appendCommitAuthors(release, authors))
+      .toBe(`## [1.0.0](https://github.com/samuelba/ukemi/compare/v0.9.0...v1.0.0) (2026-11-08)
+
+### Features
+
+${bullet('show the CI status (@samuelba)', 'a')}
+${bullet('import a contributed change (Jane Doe)', 'b')}
+${bullet('older change', 'c')}
+
+---
+This PR was generated with Release Please.
+`)
+  })
+
+  test('leaves a bullet unchanged when it already names the author', () => {
+    const annotated = `${bullet('show the CI status (@samuelba)', 'a')}\n`
+
+    expect(appendCommitAuthors(annotated, new Map([[sha('a'), '@samuelba']]))).toBe(annotated)
+  })
+
+  test('leaves the notes unchanged without authors', () => {
+    expect(appendCommitAuthors(release, new Map())).toBe(release)
+  })
+})
+
+describe('commitAuthorsEnabled', () => {
+  test('is enabled by the top-level option', () => {
+    expect(commitAuthorsEnabled({ 'include-commit-authors': true, packages: { '.': {} } })).toBe(
+      true,
+    )
+  })
+
+  test('is enabled by the option on a package', () => {
+    expect(commitAuthorsEnabled({ packages: { '.': { 'include-commit-authors': true } } })).toBe(
+      true,
+    )
+  })
+
+  test('is disabled without the option or when a package turns it off', () => {
+    expect(commitAuthorsEnabled({ packages: { '.': { 'release-type': 'node' } } })).toBe(false)
+    expect(
+      commitAuthorsEnabled({
+        'include-commit-authors': true,
+        packages: { '.': { 'include-commit-authors': false } },
+      }),
+    ).toBe(false)
   })
 })

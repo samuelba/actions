@@ -22,7 +22,9 @@ inputs:
     description: Changelog that release-please writes.
     default: CHANGELOG.md
   dedupe:
-    description: Set to false to skip the cleanup of the release notes.
+    description: >-
+      Set to false to keep merge commits and rebased copies in the release notes. Commit authors are
+      still added when the config sets include-commit-authors.
     default: 'true'
   node-version:
     description: Node.js version for the cleanup. It needs 22.18 or later to run TypeScript.
@@ -59,25 +61,27 @@ runs:
         manifest-file: ${{ inputs.manifest-file }}
         target-branch: ${{ inputs.target-branch }}
 
-    - if: inputs.dedupe == 'true' && steps.release.outputs.pr != '' && steps.release.outputs.release_created != 'true'
+    - if: steps.release.outputs.pr != '' && steps.release.outputs.release_created != 'true'
       uses: actions/checkout@v7
       with:
         token: ${{ inputs.token }}
         ref: ${{ inputs.target-branch }}
 
-    - if: inputs.dedupe == 'true' && steps.release.outputs.pr != '' && steps.release.outputs.release_created != 'true'
+    - if: steps.release.outputs.pr != '' && steps.release.outputs.release_created != 'true'
       uses: actions/setup-node@v7
       with:
         node-version: ${{ inputs.node-version }}
 
-    - name: Drop merge commits and stale copies from the release notes
-      if: inputs.dedupe == 'true' && steps.release.outputs.pr != '' && steps.release.outputs.release_created != 'true'
+    - name: Clean up the release notes
+      if: steps.release.outputs.pr != '' && steps.release.outputs.release_created != 'true'
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.token }}
         REPO: ${{ github.repository }}
         PR_JSON: ${{ steps.release.outputs.pr }}
         CHANGELOG: ${{ inputs.changelog-path }}
+        CONFIG: ${{ inputs.config-file }}
+        DEDUPE: ${{ inputs.dedupe }}
       run: |
         set -euo pipefail
         # Searching by label misses a pull request that release-please opened moments ago.
@@ -98,12 +102,14 @@ runs:
         node "$script" \
           --repo "$REPO" \
           --changelog "$CHANGELOG" \
+          --config "$CONFIG" \
+          --dedupe "$DEDUPE" \
           --pull-request-body "$body"
         if ! git diff --quiet -- "$CHANGELOG"; then
           git add "$CHANGELOG"
           git -c user.name='github-actions[bot]' \
             -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
-            commit -m "chore: drop duplicate entries from the changelog"
+            commit -m "chore: clean up the release notes"
           git push
         fi
         if ! cmp -s "$body" "${body}.orig"; then
