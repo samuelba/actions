@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.0](https://github.com/samuelba/actions/compare/v1.0.1...v1.1.0) (2026-11-08)
+
+
+### Features
+
+* add commit authors to the release notes ([8cf9e08](https://github.com/samuelba/actions/commit/8cf9e08cb9a5e639018ec02a8dbf0c2c29f1f77f))
+* add commit authors to the release notes ([21a8e4e](https://github.com/samuelba/actions/commit/21a8e4e8e6e6599185d2c2355334500d5b99e37c))
+
 ## [1.0.1](https://github.com/samuelba/actions/compare/v1.0.0...v1.0.1) (2026-11-07)
 
 
